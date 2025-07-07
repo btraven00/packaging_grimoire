@@ -1,31 +1,27 @@
 {
-  description = "Reproducible EasyBuild builder shell with Nix + pip-installed EasyBuild";
+  description = "EasyBuild shell with virtualenv setup inside Nix flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";  # Adjust to your preferred channel
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-        };
+        pkgs = import nixpkgs { inherit system; };
 
-        pythonEnv = pkgs.python3.withPackages (ps: with ps; [
-          pip
-          setuptools
-          wheel
-        ]);
+        python = pkgs.python3;
+        venvDir = ".venv";
       in {
         devShells.default = pkgs.mkShell {
           name = "easybuild-env";
 
           buildInputs = [
-            pythonEnv
-            pkgs.git
+            python
+            python.pkgs.pip
             pkgs.gcc
+            pkgs.git
             pkgs.curl
             pkgs.openssl
             pkgs.zlib
@@ -41,16 +37,23 @@
           shellHook = ''
             export LC_ALL=C.UTF-8
             export LANG=C.UTF-8
-            export PATH=$HOME/.local/bin:$PATH
 
-            if ! command -v eb >/dev/null; then
-              echo "🔧 Installing EasyBuild (user-level pip)..."
-              pip install --quiet --user easybuild
+            if [ ! -d "${venvDir}" ]; then
+              echo "🐍 Creating Python virtual environment in ${venvDir}"
+              python -m venv ${venvDir}
             fi
 
-            echo "✅ EasyBuild is ready:"
-            echo "   eb --version => $(eb --version 2>/dev/null || echo 'not found')"
+            source ${venvDir}/bin/activate
+
+            if ! command -v eb >/dev/null; then
+              echo "🔧 Installing EasyBuild into virtualenv..."
+              pip install --quiet --upgrade pip setuptools wheel
+              pip install --quiet easybuild
+            fi
+
+            echo "✅ EasyBuild version: $(eb --version)"
           '';
         };
       });
 }
+
